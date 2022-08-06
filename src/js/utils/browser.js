@@ -95,7 +95,7 @@ export const IS_FIREFOX = (/Firefox/i).test(USER_AGENT);
  * @const
  * @type {Boolean}
  */
-export const IS_EDGE = (/Edge/i).test(USER_AGENT);
+export const IS_EDGE = (/Edg/i).test(USER_AGENT);
 
 /**
  * Whether or not this is Google Chrome.
@@ -169,10 +169,10 @@ export const IS_WINDOWS = (/Windows/i).test(USER_AGENT);
  * @const
  * @type {Boolean}
  */
-export const TOUCH_ENABLED = Dom.isReal() && (
+export const TOUCH_ENABLED = Boolean(Dom.isReal() && (
   'ontouchstart' in window ||
   window.navigator.maxTouchPoints ||
-  window.DocumentTouch && window.document instanceof window.DocumentTouch);
+  window.DocumentTouch && window.document instanceof window.DocumentTouch));
 
 /**
  * Whether or not this device is an iPad.
@@ -181,7 +181,8 @@ export const TOUCH_ENABLED = Dom.isReal() && (
  * @const
  * @type {Boolean}
  */
-export const IS_IPAD = (/iPad/i).test(USER_AGENT) || (IS_SAFARI && TOUCH_ENABLED);
+export const IS_IPAD = (/iPad/i).test(USER_AGENT) ||
+  (IS_SAFARI && TOUCH_ENABLED && !(/iPhone/i).test(USER_AGENT));
 
 /**
  * Whether or not this device is an iPhone.

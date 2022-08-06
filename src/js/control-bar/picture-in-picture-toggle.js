@@ -26,14 +26,26 @@ class PictureInPictureToggle extends Button {
    */
   constructor(player, options) {
     super(player, options);
-    this.on(player, ['enterpictureinpicture', 'leavepictureinpicture'], this.handlePictureInPictureChange);
+    this.on(player, ['enterpictureinpicture', 'leavepictureinpicture'], (e) => this.handlePictureInPictureChange(e));
+    this.on(player, ['disablepictureinpicturechanged', 'loadedmetadata'], (e) => this.handlePictureInPictureEnabledChange(e));
 
-    // TODO: Activate button on player loadedmetadata event.
+    this.on(player, ['loadedmetadata', 'audioonlymodechange', 'audiopostermodechange'], () => {
+      // This audio detection will not detect HLS or DASH audio-only streams because there was no reliable way to detect them at the time
+      const isSourceAudio = player.currentType().substring(0, 5) === 'audio';
+
+      if (isSourceAudio || player.audioPosterMode() || player.audioOnlyMode()) {
+        if (player.isInPictureInPicture()) {
+          player.exitPictureInPicture();
+        }
+        this.hide();
+      } else {
+        this.show();
+      }
+
+    });
+
     // TODO: Deactivate button on player emptied event.
-    // TODO: Deactivate button if disablepictureinpicture attribute is present.
-    if (!document.pictureInPictureEnabled) {
-      this.disable();
-    }
+    this.disable();
   }
 
   /**
@@ -44,6 +56,18 @@ class PictureInPictureToggle extends Button {
    */
   buildCSSClass() {
     return `vjs-picture-in-picture-control ${super.buildCSSClass()}`;
+  }
+
+  /**
+   * Enables or disables button based on document.pictureInPictureEnabled property value
+   * or on value returned by player.disablePictureInPicture() method.
+   */
+  handlePictureInPictureEnabledChange() {
+    if (document.pictureInPictureEnabled && this.player_.disablePictureInPicture() === false) {
+      this.enable();
+    } else {
+      this.disable();
+    }
   }
 
   /**
@@ -62,6 +86,7 @@ class PictureInPictureToggle extends Button {
     } else {
       this.controlText('Picture-in-Picture');
     }
+    this.handlePictureInPictureEnabledChange();
   }
 
   /**

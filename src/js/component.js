@@ -7,12 +7,14 @@ import window from 'global/window';
 import evented from './mixins/evented';
 import stateful from './mixins/stateful';
 import * as Dom from './utils/dom.js';
-import DomData from './utils/dom-data';
 import * as Fn from './utils/fn.js';
 import * as Guid from './utils/guid.js';
 import {toTitleCase, toLowerCase} from './utils/string-cases.js';
 import mergeOptions from './utils/merge-options.js';
 import computedStyle from './utils/computed-style';
+import Map from './utils/map.js';
+import Set from './utils/set.js';
+import keycode from 'keycode';
 
 /**
  * Base class for all UI Components.
@@ -39,12 +41,15 @@ class Component {
    *        The `Player` that this class should be attached to.
    *
    * @param {Object} [options]
-   *        The key/value store of player options.
+   *        The key/value store of component options.
    *
    * @param {Object[]} [options.children]
    *        An array of children objects to intialize this component with. Children objects have
    *        a name property that will be used if more than one component of the same type needs to be
    *        added.
+   *
+   * @param  {string} [options.className]
+   *         A class or space separated list of classes to add the component
    *
    * @param {Component~ReadyCallback} [ready]
    *        Function that gets called when the `Component` is ready.
@@ -89,10 +94,17 @@ class Component {
       this.el_ = this.createEl();
     }
 
+    if (options.className && this.el_) {
+      options.className.split(' ').forEach(c => this.addClass(c));
+    }
+
     // if evented is anything except false, we want to mixin in evented
     if (options.evented !== false) {
       // Make this an evented object and use `el_`, if available, as its event bus
       evented(this, {eventBusKey: this.el_ ? 'el_' : null});
+
+      this.handleLanguagechange = this.handleLanguagechange.bind(this);
+      this.on(this.player_, 'languagechange', this.handleLanguagechange);
     }
     stateful(this, this.constructor.defaultState);
 
@@ -100,38 +112,10 @@ class Component {
     this.childIndex_ = {};
     this.childNameIndex_ = {};
 
-    let SetSham;
-
-    if (!window.Set) {
-      SetSham = class {
-        constructor() {
-          this.set_ = {};
-        }
-        has(key) {
-          return key in this.set_;
-        }
-        delete(key) {
-          const has = this.has(key);
-
-          delete this.set_[key];
-
-          return has;
-        }
-        add(key) {
-          this.set_[key] = 1;
-          return this;
-        }
-        forEach(callback, thisArg) {
-          for (const key in this.set_) {
-            callback.call(thisArg, key, key, this);
-          }
-        }
-      };
-    }
-
-    this.setTimeoutIds_ = window.Set ? new Set() : new SetSham();
-    this.setIntervalIds_ = window.Set ? new Set() : new SetSham();
-    this.rafIds_ = window.Set ? new Set() : new SetSham();
+    this.setTimeoutIds_ = new Set();
+    this.setIntervalIds_ = new Set();
+    this.rafIds_ = new Set();
+    this.namedRafs_ = new Map();
     this.clearingTimersOnDispose_ = false;
 
     // Add any child components in options
@@ -139,25 +123,33 @@ class Component {
       this.initChildren();
     }
 
-    this.ready(ready);
-    // Don't want to trigger ready here or it will before init is actually
+    // Don't want to trigger ready here or it will go before init is actually
     // finished for all children that run this constructor
+    this.ready(ready);
 
     if (options.reportTouchActivity !== false) {
       this.enableTouchActivity();
     }
+
   }
 
   /**
    * Dispose of the `Component` and all child components.
    *
    * @fires Component#dispose
+   *
+   * @param {Object} options
+   * @param {Element} options.originalEl element with which to replace player element
    */
-  dispose() {
+  dispose(options = {}) {
 
     // Bail out if the component has already been disposed.
     if (this.isDisposed_) {
       return;
+    }
+
+    if (this.readyQueue_) {
+      this.readyQueue_.length = 0;
     }
 
     /**
@@ -193,12 +185,13 @@ class Component {
     if (this.el_) {
       // Remove element from DOM
       if (this.el_.parentNode) {
-        this.el_.parentNode.removeChild(this.el_);
+        if (options.restoreEl) {
+          this.el_.parentNode.replaceChild(options.restoreEl, this.el_);
+        } else {
+          this.el_.parentNode.removeChild(this.el_);
+        }
       }
 
-      if (DomData.has(this.el_)) {
-        DomData.delete(this.el_);
-      }
       this.el_ = null;
     }
 
@@ -314,6 +307,7 @@ class Component {
    *         The localized string or if no localization exists the english string.
    */
   localize(string, tokens, defaultValue = string) {
+
     const code = this.player_.language && this.player_.language();
     const languages = this.player_.languages && this.player_.languages();
     const language = languages && languages[code];
@@ -343,6 +337,13 @@ class Component {
 
     return localizedString;
   }
+
+  /**
+   * Handles language change for the player in components. Should be overriden by sub-components.
+   *
+   * @abstract
+   */
+  handleLanguagechange() {}
 
   /**
    * Return the `Component`s DOM element. This is where children get inserted.
@@ -414,6 +415,37 @@ class Component {
     }
 
     return this.childNameIndex_[name];
+  }
+
+  /**
+   * Returns the descendant `Component` following the givent
+   * descendant `names`. For instance ['foo', 'bar', 'baz'] would
+   * try to get 'foo' on the current component, 'bar' on the 'foo'
+   * component and 'baz' on the 'bar' component and return undefined
+   * if any of those don't exist.
+   *
+   * @param {...string[]|...string} names
+   *        The name of the child `Component` to get.
+   *
+   * @return {Component|undefined}
+   *         The descendant `Component` following the given descendant
+   *         `names` or undefined.
+   */
+  getDescendant(...names) {
+    // flatten array argument into the main array
+    names = names.reduce((acc, n) => acc.concat(n), []);
+
+    let currentChild = this;
+
+    for (let i = 0; i < names.length; i++) {
+      currentChild = currentChild.getChild(names[i]);
+
+      if (!currentChild || !currentChild.getChild) {
+        return;
+      }
+    }
+
+    return currentChild;
   }
 
   /**
@@ -495,8 +527,13 @@ class Component {
       // If inserting before a component, insert before that component's element
       let refNode = null;
 
-      if (this.children_[index + 1] && this.children_[index + 1].el_) {
-        refNode = this.children_[index + 1].el_;
+      if (this.children_[index + 1]) {
+        // Most children are components, but the video tech is an HTML element
+        if (this.children_[index + 1].el_) {
+          refNode = this.children_[index + 1].el_;
+        } else if (Dom.isEl(this.children_[index + 1])) {
+          refNode = this.children_[index + 1];
+        }
       }
 
       this.contentEl().insertBefore(component.el(), refNode);
@@ -1139,8 +1176,10 @@ class Component {
     if (this.player_) {
 
       // We only stop propagation here because we want unhandled events to fall
-      // back to the browser.
-      event.stopPropagation();
+      // back to the browser. Exclude Tab for focus trapping.
+      if (!keycode.isEventKey(event, 'Tab')) {
+        event.stopPropagation();
+      }
       this.player_.handleKeyDown(event);
     }
   }
@@ -1494,6 +1533,53 @@ class Component {
   }
 
   /**
+   * Request an animation frame, but only one named animation
+   * frame will be queued. Another will never be added until
+   * the previous one finishes.
+   *
+   * @param {string} name
+   *        The name to give this requestAnimationFrame
+   *
+   * @param  {Component~GenericCallback} fn
+   *         A function that will be bound to this component and executed just
+   *         before the browser's next repaint.
+   */
+  requestNamedAnimationFrame(name, fn) {
+    if (this.namedRafs_.has(name)) {
+      return;
+    }
+    this.clearTimersOnDispose_();
+
+    fn = Fn.bind(this, fn);
+
+    const id = this.requestAnimationFrame(() => {
+      fn();
+      if (this.namedRafs_.has(name)) {
+        this.namedRafs_.delete(name);
+      }
+    });
+
+    this.namedRafs_.set(name, id);
+
+    return name;
+  }
+
+  /**
+   * Cancels a current named animation frame if it exists.
+   *
+   * @param {string} name
+   *        The name of the requestAnimationFrame to cancel.
+   */
+  cancelNamedAnimationFrame(name) {
+    if (!this.namedRafs_.has(name)) {
+      return;
+    }
+
+    this.cancelAnimationFrame(this.namedRafs_.get(name));
+    this.namedRafs_.delete(name);
+  }
+
+  /**
    * Cancels a queued callback passed to {@link Component#requestAnimationFrame}
    * (rAF).
    *
@@ -1542,11 +1628,15 @@ class Component {
     this.clearingTimersOnDispose_ = true;
     this.one('dispose', () => {
       [
+        ['namedRafs_', 'cancelNamedAnimationFrame'],
         ['rafIds_', 'cancelAnimationFrame'],
         ['setTimeoutIds_', 'clearTimeout'],
         ['setIntervalIds_', 'clearInterval']
       ].forEach(([idName, cancelName]) => {
-        this[idName].forEach(this[cancelName], this);
+        // for a `Set` key will actually be the value again
+        // so forEach((val, val) =>` but for maps we want to use
+        // the key.
+        this[idName].forEach((val, key) => this[cancelName](key));
       });
 
       this.clearingTimersOnDispose_ = false;
@@ -1633,11 +1723,6 @@ class Component {
    *
    * @return {Component}
    *         The `Component` that got registered under the given name.
-   *
-   * @deprecated In `videojs` 6 this will not return `Component`s that were not
-   *             registered using {@link Component.registerComponent}. Currently we
-   *             check the global `videojs` object for a `Component` name and
-   *             return that if it exists.
    */
   static getComponent(name) {
     if (!name || !Component.components_) {

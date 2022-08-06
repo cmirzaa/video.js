@@ -45,7 +45,13 @@ if (Html5.supportsNativeTextTracks()) {
       kind: 'captions',
       label: 'English',
       language: 'en',
-      tech: {}
+      tech: {
+        crossOrigin() {
+          return null;
+        },
+        on() {},
+        one() {}
+      }
     });
 
     const nativeTrack = document.createElement('track');
@@ -70,6 +76,10 @@ if (Html5.supportsNativeTextTracks()) {
             return [nativeTrack];
           }
         };
+      },
+      on() {},
+      crossOrigin() {
+        return null;
       },
       textTracks() {
         return tt;
@@ -98,7 +108,13 @@ if (Html5.supportsNativeTextTracks()) {
       label: 'English',
       language: 'en',
       src: 'example.com/english.vtt',
-      tech: {}
+      tech: {
+        crossOrigin() {
+          return null;
+        },
+        on() {},
+        one() {}
+      }
     });
 
     const nativeTrack = document.createElement('track');
@@ -126,6 +142,10 @@ if (Html5.supportsNativeTextTracks()) {
           }
         };
       },
+      crossOrigin() {
+        return null;
+      },
+      on() {},
       textTracks() {
         return tt;
       },
@@ -152,7 +172,13 @@ QUnit.test('trackToJson_ produces correct representation for emulated track obje
     label: 'English',
     language: 'en',
     src: 'example.com/english.vtt',
-    tech: {}
+    tech: {
+      crossOrigin() {
+        return null;
+      },
+      on() {},
+      one() {}
+    }
   });
 
   assert.deepEqual(cleanup(c.trackToJson_(track)), {
@@ -170,7 +196,13 @@ QUnit.test('textTracksToJson produces good json output for emulated only', funct
     label: 'English',
     language: 'en',
     src: 'example.com/english.vtt',
-    tech: {}
+    tech: {
+      crossOrigin() {
+        return null;
+      },
+      on() {},
+      one() {}
+    }
   });
 
   const anotherTrack = new TextTrack({
@@ -178,7 +210,13 @@ QUnit.test('textTracksToJson produces good json output for emulated only', funct
     kind: 'captions',
     srclang: 'es',
     label: 'Spanish',
-    tech: {}
+    tech: {
+      crossOrigin() {
+        return null;
+      },
+      on() {},
+      one() {}
+    }
   });
 
   const tt = new TextTrackList();
@@ -198,6 +236,11 @@ QUnit.test('textTracksToJson produces good json output for emulated only', funct
         }
       };
     },
+    crossOrigin() {
+      return null;
+    },
+    on() {},
+    one() {},
     textTracks() {
       return tt;
     }
@@ -227,7 +270,13 @@ QUnit.test('jsonToTextTracks calls addRemoteTextTrack on the tech with emulated 
     label: 'English',
     language: 'en',
     src: 'example.com/english.vtt',
-    tech: {}
+    tech: {
+      crossOrigin() {
+        return null;
+      },
+      on() {},
+      one() {}
+    }
   });
 
   const anotherTrack = new TextTrack({
@@ -235,7 +284,13 @@ QUnit.test('jsonToTextTracks calls addRemoteTextTrack on the tech with emulated 
     kind: 'captions',
     srclang: 'es',
     label: 'Spanish',
-    tech: {}
+    tech: {
+      crossOrigin() {
+        return null;
+      },
+      on() {},
+      one() {}
+    }
   });
 
   const tt = new TextTrackList();
@@ -256,6 +311,11 @@ QUnit.test('jsonToTextTracks calls addRemoteTextTrack on the tech with emulated 
         }
       };
     },
+    crossOrigin() {
+      return null;
+    },
+    on() {},
+    one() {},
     textTracks() {
       return tt;
     },
